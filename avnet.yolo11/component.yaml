@@ -1,0 +1,71 @@
+# avnet.yolo11/component.yaml
+schemaVersion: 2024-01-01
+name: avnet.yolo11
+version: 0.1.0
+platform:
+  os: linux
+  arch: arm64
+description: "YOLO11 live detection on Pi 5 with optional /IOTCONNECT socket telemetry."
+parameters:
+  SOURCE: { type: string, default: "0", description: "Video source: 0 for /dev/video0; or RTSP URL." }
+  MODEL:  { type: string, default: "yolo11n.pt", description: "Ultralytics YOLO11 model to use." }
+  CONF:   { type: number, default: 0.25, description: "Confidence threshold (0..1)." }
+  VIEW:   { type: boolean, default: true, description: "Show preview window (requires desktop)." }
+  WIDTH:  { type: integer, default: 640, description: "Capture width." }
+  HEIGHT: { type: integer, default: 480, description: "Capture height." }
+  FPS:    { type: integer, default: 30, description: "Capture frame rate." }
+  IOTC_SOCKET: { type: string, default: "/var/snap/iotconnect/common/iotc.sock", description: "Unix socket to /IOTCONNECT (optional)." }
+artifacts:
+  - uri: .
+lifecycle:
+  install:
+    script: |
+      set -e
+      echo "[avnet.yolo11] install start"
+      sudo apt-get update
+      # camera & performance helpers (adjust to your image)
+      sudo apt-get install -y python3-venv python3-opencv libatlas-base-dev
+      # optional: v4l2 bridge (if using Pi camera through /dev/video0)
+      # sudo raspi-config nonint do_camera 0 || true
+
+      # venv
+      if [ ! -d ".venv" ]; then
+        python3 -m venv .venv
+      fi
+      . .venv/bin/activate
+      python -m pip install --upgrade pip wheel
+      pip install -r requirements.txt
+
+      # prefetch the model once (cached under ultralytics dir)
+      python - <<'PY'
+import os
+from ultralytics import YOLO
+m = os.environ.get("MODEL","yolo11n.pt")
+YOLO(m)  # triggers download/cache if needed
+print("Model cached:", m)
+PY
+      echo "[avnet.yolo11] install done"
+  run:
+    script: |
+      set -e
+      . .venv/bin/activate
+      chmod +x ./run.sh
+      ./run.sh
+  stop:
+    script: |
+      chmod +x ./stop.sh
+      ./stop.sh
+permissions:
+  devices:
+    - /dev/video0
+  network: true
+  ipc: true
+env:
+  SOURCE: "{{ .params.SOURCE }}"
+  MODEL: "{{ .params.MODEL }}"
+  CONF: "{{ .params.CONF }}"
+  VIEW: "{{ .params.VIEW }}"
+  WIDTH: "{{ .params.WIDTH }}"
+  HEIGHT: "{{ .params.HEIGHT }}"
+  FPS: "{{ .params.FPS }}"
+  IOTC_SOCKET: "{{ .params.IOTC_SOCKET }}"
